@@ -1,0 +1,4 @@
+trajectory_msgs/JointTrajectory joint_trajectory
+---
+cartesian_control_msgs/CartesianTrajectory cartesian_trajectory
+bool success
