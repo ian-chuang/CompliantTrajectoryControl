@@ -3,12 +3,14 @@ import actionlib
 import tf2_ros
 import tf2_geometry_msgs
 from dynamic_reconfigure.server import Server
-from geometry_msgs.msg import WrenchStamped
+from geometry_msgs.msg import WrenchStamped, PoseStamped
 from compliant_trajectory_control.cfg import Tolerance6DOFConfig, GoalTimeToleranceConfig
 from compliant_trajectory_control.msg import FollowCompliantTrajectoryAction, FollowCompliantTrajectoryFeedback, FollowCompliantTrajectoryResult
 from cartesian_control_msgs.msg import FollowCartesianTrajectoryGoal, CartesianTolerance, FollowCartesianTrajectoryAction
 from compliant_trajectory_control.joint_to_cartesian_converter import JointToCartesianConverter
 from actionlib_msgs.msg import GoalStatus
+import numpy as np
+from compliant_trajectory_control.utils import pose_error   
 
 class GoalTimeToleranceServer:
     def __init__(self, ns):
@@ -43,111 +45,10 @@ class CartesianToleranceServer:
         self.accel_tolerance = Tolerance6DOFServer(ns + "/accel_error")
 
     def getTolerance(self):
-        return self.pose_tolerance.getTolerance(), self.twist_tolerance.getTolerance(), self.accel_tolerance.getTolerance()
-    
-class FollowCompliantTrajectoryActionServer:
-    def __init__(self):  
+        pose_tolerance = self.pose_tolerance.getTolerance()
+        twist_tolerance = self.twist_tolerance.getTolerance()
+        accel_tolerance = self.accel_tolerance.getTolerance()
 
-        name = rospy.get_name()    
-
-        # Load parameters from the parameter server
-        robot_description_param = rospy.search_param("robot_description")
-        robot_description = rospy.get_param(robot_description_param)
-
-        controller_ns = rospy.get_param(name + "/controller")
-
-        controller_param = rospy.search_param(controller_ns)
-        self.base_link = rospy.get_param(controller_param + "/base")
-        self.tip_link = rospy.get_param(controller_param + "/tip")
-        self.joint_names = rospy.get_param(controller_param + "/joints")
-
-        self.converter = JointToCartesianConverter(robot_description, self.joint_names, self.base_link, self.tip_link)
-
-        # Create a TF2 Buffer and Listener
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        # Initialize the wrench publisher
-        self.wrench_publisher = rospy.Publisher(name + "/target_wrench", WrenchStamped, queue_size=1)
-
-        self.path_tolerance = CartesianToleranceServer("path_tolerance")
-        self.goal_tolerance = CartesianToleranceServer("goal_tolerance")
-        self.goal_time_tolerance = GoalTimeToleranceServer("")
-
-        # Initialize the Cartesian Trajectory Action Client
-        self.cartesian_trajectory_client = actionlib.SimpleActionClient(
-            controller_ns + '/follow_cartesian_trajectory',
-            FollowCartesianTrajectoryAction)
-        self.cartesian_trajectory_client.wait_for_server()
-
-        # Initialize the action server
-        self.compliant_trajectory_action_server = actionlib.SimpleActionServer(
-            name + '/follow_compliant_trajectory',
-            FollowCompliantTrajectoryAction,
-            execute_cb=self.execute_cb,
-            auto_start=False)
-        self.compliant_trajectory_action_server.start()
-
-    def execute_cb(self, compliant_trajectory_goal):
-        joint_trajectory_input = compliant_trajectory_goal.joint_trajectory
-        path_tolerance_input = compliant_trajectory_goal.path_tolerance
-        goal_tolerance_input = compliant_trajectory_goal.goal_tolerance
-        goal_time_tolerance_input = compliant_trajectory_goal.goal_time_tolerance
-
-        cartesian_trajectory = self.converter.jointToCartesian(joint_trajectory_input)
-
-        path_pose_tolerance, path_twist_tolerance, path_accel_tolerance = self.path_tolerance.getTolerance()
-        goal_pose_tolerance, goal_twist_tolerance, goal_accel_tolerance = self.goal_tolerance.getTolerance()
-        goal_time_tolerance = self.goal_time_tolerance.getGoalTimeTolerance()
-        wrench_stamped = compliant_trajectory_goal.wrench
-
-        cartesian_trajectory_goal = FollowCartesianTrajectoryGoal()
-        cartesian_trajectory_goal.trajectory = cartesian_trajectory
-        cartesian_trajectory_goal.path_tolerance = self.create_cartesian_tolerance(path_pose_tolerance, path_twist_tolerance, path_accel_tolerance, path_tolerance_input)
-        cartesian_trajectory_goal.goal_tolerance = self.create_cartesian_tolerance(goal_pose_tolerance, goal_twist_tolerance, goal_accel_tolerance, goal_tolerance_input)
-        cartesian_trajectory_goal.goal_time_tolerance = goal_time_tolerance_input if goal_time_tolerance_input != 0 else rospy.Duration(goal_time_tolerance)
-        
-        # Send the Cartesian Trajectory Goal to the action server
-        self.cartesian_trajectory_client.send_goal(cartesian_trajectory_goal)
-
-        # Loop until the action client is done
-        while not self.cartesian_trajectory_client.wait_for_result(rospy.Duration(0.01)):
-            # Check if the action server is preempted
-            if self.compliant_trajectory_action_server.is_preempt_requested():
-                rospy.loginfo("Preempting the action client")
-                # Preempt the action client by cancelling the goal
-                self.cartesian_trajectory_client.cancel_goal()
-                # Set the action server as preempted
-                self.compliant_trajectory_action_server.set_preempted()
-                return
-            # Continually publish a wrench in the frame of the tip link
-            self.publish_wrench_in_tip_frame(wrench_stamped)
-
-        # The loop is done, check the result from the Cartesian Trajectory action
-        cartesian_trajectory_result = self.cartesian_trajectory_client.get_result()
-        compliant_trajectory_result = FollowCompliantTrajectoryResult()
-        compliant_trajectory_result.error_code = cartesian_trajectory_result.error_code
-        compliant_trajectory_result.error_string = cartesian_trajectory_result.error_string
-        
-        if compliant_trajectory_result.error_code == FollowCompliantTrajectoryResult.SUCCESSFUL:
-            self.compliant_trajectory_action_server.set_succeeded(cartesian_trajectory_result)
-        else:
-            self.compliant_trajectory_action_server.set_aborted(cartesian_trajectory_result)
-
-    def publish_wrench_in_tip_frame(self, wrench_stamped):
-        try:
-            if wrench_stamped.header.frame_id == "":
-                wrench_stamped.header.frame_id = self.tip_link
-
-            # Transform the WrenchStamped message to the tip frame
-            transformed_wrench_stamped = self.tf_buffer.transform(wrench_stamped, self.tip_link, timeout=rospy.Duration(1.0))
-
-            # Publish the transformed WrenchStamped message
-            self.wrench_publisher.publish(transformed_wrench_stamped)
-
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            rospy.logwarn("TF2 Exception: {}".format(e))
-
-    def create_cartesian_tolerance(self, pose_tolerance, twist_tolerance, accel_tolerance, input_cartesian_tolerance):
         cartesian_tolerance = CartesianTolerance()
         cartesian_tolerance.position_error.x = pose_tolerance[0]
         cartesian_tolerance.position_error.y = pose_tolerance[1]
@@ -168,42 +69,168 @@ class FollowCompliantTrajectoryActionServer:
         cartesian_tolerance.acceleration_error.angular.y = accel_tolerance[4]
         cartesian_tolerance.acceleration_error.angular.z = accel_tolerance[5]
 
-        # Check and override the tolerance values if input_cartesian_tolerance has non-zero values
-        if input_cartesian_tolerance.position_error.x != 0:
-            cartesian_tolerance.position_error.x = input_cartesian_tolerance.position_error.x
-        if input_cartesian_tolerance.position_error.y != 0:
-            cartesian_tolerance.position_error.y = input_cartesian_tolerance.position_error.y
-        if input_cartesian_tolerance.position_error.z != 0:
-            cartesian_tolerance.position_error.z = input_cartesian_tolerance.position_error.z
-        if input_cartesian_tolerance.orientation_error.x != 0:
-            cartesian_tolerance.orientation_error.x = input_cartesian_tolerance.orientation_error.x
-        if input_cartesian_tolerance.orientation_error.y != 0:
-            cartesian_tolerance.orientation_error.y = input_cartesian_tolerance.orientation_error.y
-        if input_cartesian_tolerance.orientation_error.z != 0:
-            cartesian_tolerance.orientation_error.z = input_cartesian_tolerance.orientation_error.z
-        if input_cartesian_tolerance.twist_error.linear.x != 0:
-            cartesian_tolerance.twist_error.linear.x = input_cartesian_tolerance.twist_error.linear.x
-        if input_cartesian_tolerance.twist_error.linear.y != 0:
-            cartesian_tolerance.twist_error.linear.y = input_cartesian_tolerance.twist_error.linear.y
-        if input_cartesian_tolerance.twist_error.linear.z != 0:
-            cartesian_tolerance.twist_error.linear.z = input_cartesian_tolerance.twist_error.linear.z
-        if input_cartesian_tolerance.twist_error.angular.x != 0:
-            cartesian_tolerance.twist_error.angular.x = input_cartesian_tolerance.twist_error.angular.x
-        if input_cartesian_tolerance.twist_error.angular.y != 0:
-            cartesian_tolerance.twist_error.angular.y = input_cartesian_tolerance.twist_error.angular.y
-        if input_cartesian_tolerance.twist_error.angular.z != 0:
-            cartesian_tolerance.twist_error.angular.z = input_cartesian_tolerance.twist_error.angular.z
-        if input_cartesian_tolerance.acceleration_error.linear.x != 0:
-            cartesian_tolerance.acceleration_error.linear.x = input_cartesian_tolerance.acceleration_error.linear.x
-        if input_cartesian_tolerance.acceleration_error.linear.y != 0:
-            cartesian_tolerance.acceleration_error.linear.y = input_cartesian_tolerance.acceleration_error.linear.y
-        if input_cartesian_tolerance.acceleration_error.linear.z != 0:
-            cartesian_tolerance.acceleration_error.linear.z = input_cartesian_tolerance.acceleration_error.linear.z
-        if input_cartesian_tolerance.acceleration_error.angular.x != 0:
-            cartesian_tolerance.acceleration_error.angular.x = input_cartesian_tolerance.acceleration_error.angular.x
-        if input_cartesian_tolerance.acceleration_error.angular.y != 0:
-            cartesian_tolerance.acceleration_error.angular.y = input_cartesian_tolerance.acceleration_error.angular.y
-        if input_cartesian_tolerance.acceleration_error.angular.z != 0:
-            cartesian_tolerance.acceleration_error.angular.z = input_cartesian_tolerance.acceleration_error.angular.z
-
         return cartesian_tolerance
+    
+class FollowCompliantTrajectoryActionServer:
+    def __init__(self):  
+
+        name = rospy.get_name()    
+
+        # Load parameters from the parameter server
+        robot_description_param = rospy.search_param("robot_description")
+        robot_description = rospy.get_param(robot_description_param)
+
+        self.base_link = rospy.get_param(name + "/robot_base_link")
+        self.tip_link = rospy.get_param(name + "/end_effector_link")
+        self.joint_names = rospy.get_param(name + "/joints")
+
+        self.converter = JointToCartesianConverter(robot_description, self.joint_names, self.base_link, self.tip_link)
+
+        # Create a TF2 Buffer and Listener
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        # Initialize the wrench publisher
+        self.wrench_publisher = rospy.Publisher(name + "/target_wrench", WrenchStamped, queue_size=1)
+        self.frame_publisher = rospy.Publisher(name + "/target_frame", PoseStamped, queue_size=1)
+
+        self.path_tolerance = CartesianToleranceServer("path_tolerance")
+        self.goal_tolerance = CartesianToleranceServer("goal_tolerance")
+        self.goal_time_tolerance = GoalTimeToleranceServer("")
+
+        # Initialize the action server
+        self.compliant_trajectory_action_server = actionlib.SimpleActionServer(
+            name + '/follow_compliant_trajectory',
+            FollowCompliantTrajectoryAction,
+            execute_cb=self.execute_cb,
+            auto_start=False)
+        self.compliant_trajectory_action_server.start()
+
+    def execute_cb(self, goal):
+        # retrieve values
+        cs_x, cs_y, cs_z, s_rot, duration = self.converter.joint_traj_to_cart_spline(goal.joint_trajectory)
+        wrench_stamped = goal.wrench
+
+        if goal.override_default_tolerances:
+            path_tolerance = goal.path_tolerance
+            goal_tolerance = goal.goal_tolerance
+            goal_time_tolerance = goal.goal_time_tolerance
+        else:
+            path_tolerance = self.path_tolerance.getTolerance()
+            goal_tolerance = self.goal_tolerance.getTolerance()
+            goal_time_tolerance = self.goal_time_tolerance.getGoalTimeTolerance()
+
+
+        start_time = rospy.Time.now()
+        while (rospy.Time.now() - start_time).to_sec() < duration:
+            if self.compliant_trajectory_action_server.is_preempt_requested():
+                self.compliant_trajectory_action_server.set_preempted()
+                return
+
+            current_time = (rospy.Time.now() - start_time).to_sec()
+
+            # Interpolate position and rotation using your splines
+            target_pos = np.array([cs_x(current_time), cs_y(current_time), cs_z(current_time)])
+            target_quat = s_rot(current_time).as_quat()
+
+            # Publish the target pose
+            self.publish_pose(target_pos, target_quat)
+
+            # publish wrench
+            self.publish_wrench_in_tip_frame(wrench_stamped)
+
+            # get current pose
+            current_pos, current_quat, ok = self.get_current_pose()
+            if not ok:
+                continue
+
+            # Calculate the pose error
+            error = pose_error(target_pos, target_quat, current_pos, current_quat)
+
+            # check path tolerance
+            if not self.check_tolerance(path_tolerance, error):
+                rospy.logerr("Path tolerance violated")
+                cartesian_trajectory_result = FollowCompliantTrajectoryResult()
+                cartesian_trajectory_result.error_code = FollowCompliantTrajectoryResult.PATH_TOLERANCE_VIOLATED
+                self.compliant_trajectory_action_server.set_aborted(cartesian_trajectory_result)
+                return
+        
+        finish_time = rospy.Time.now()
+        while (rospy.Time.now() - finish_time).to_sec() < goal_time_tolerance:
+            if self.compliant_trajectory_action_server.is_preempt_requested():
+                self.compliant_trajectory_action_server.set_preempted()
+                return
+
+            # Continually publish a wrench in the frame of the tip link
+            self.publish_wrench_in_tip_frame(wrench_stamped)
+
+            # Get the current pose of the end effector
+            current_pos, current_quat, ok = self.get_current_pose()
+            if not ok:
+                continue
+
+            # Calculate the pose error
+            error = pose_error(target_pos, target_quat, current_pos, current_quat)
+
+            # Check if the goal constraint is satisfied
+            if self.check_tolerance(goal_tolerance, error):
+                rospy.loginfo("Goal constraint satisfied")
+                cartesian_trajectory_result = FollowCompliantTrajectoryResult()
+                cartesian_trajectory_result.error_code = FollowCompliantTrajectoryResult.SUCCESSFUL
+                self.compliant_trajectory_action_server.set_succeeded(cartesian_trajectory_result)
+                return
+
+        rospy.logerr("Goal time tolerance exceeded")
+        cartesian_trajectory_result = FollowCompliantTrajectoryResult()
+        cartesian_trajectory_result.error_code = FollowCompliantTrajectoryResult.GOAL_TOLERANCE_VIOLATED
+        self.compliant_trajectory_action_server.set_aborted(cartesian_trajectory_result)
+
+    def publish_wrench_in_tip_frame(self, wrench_stamped):
+        try:
+            if wrench_stamped.header.frame_id == "":
+                wrench_stamped.header.frame_id = self.tip_link
+
+            # Transform the WrenchStamped message to the tip frame
+            transformed_wrench_stamped = self.tf_buffer.transform(wrench_stamped, self.tip_link, timeout=rospy.Duration(1.0))
+
+            # Publish the transformed WrenchStamped message
+            self.wrench_publisher.publish(transformed_wrench_stamped)
+
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn("TF2 Exception: {}".format(e))
+
+    def publish_pose(self, position, rotation):
+        pose_stamped = PoseStamped()
+        pose_stamped.header.frame_id = self.base_link
+        pose_stamped.header.stamp = rospy.Time.now()
+        pose_stamped.pose.position.x = position[0]
+        pose_stamped.pose.position.y = position[1]
+        pose_stamped.pose.position.z = position[2]
+        pose_stamped.pose.orientation.x = rotation[0]
+        pose_stamped.pose.orientation.y = rotation[1]
+        pose_stamped.pose.orientation.z = rotation[2]
+        pose_stamped.pose.orientation.w = rotation[3]
+        self.frame_publisher.publish(pose_stamped)
+
+    def get_current_pose(self):
+        try:
+            transform = self.tf_buffer.lookup_transform(self.base_link, self.tip_link, rospy.Time(0), timeout=rospy.Duration(1.0))
+            # Extract position and quaternion from the transform
+            position = np.array([transform.transform.translation.x, transform.transform.translation.y, transform.transform.translation.z])
+            quaternion = [transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z, transform.transform.rotation.w]
+            return position, quaternion, True
+        except Exception as e:
+            rospy.logerr(f"TF lookup failed: {e}")
+            return None, None, False  # Handle lookup failure gracefully
+        
+    def check_tolerance(self, cartesian_tolerance, error):
+        # Check if the pose error is within the tolerance
+        if (np.abs(error[0]) > cartesian_tolerance.position_error.x or
+            np.abs(error[1]) > cartesian_tolerance.position_error.y or
+            np.abs(error[2]) > cartesian_tolerance.position_error.z or
+            np.abs(error[3]) > cartesian_tolerance.orientation_error.x or
+            np.abs(error[4]) > cartesian_tolerance.orientation_error.y or
+            np.abs(error[5]) > cartesian_tolerance.orientation_error.z):
+            return False
+
+        return True
+

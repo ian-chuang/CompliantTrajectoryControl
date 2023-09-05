@@ -3,6 +3,7 @@ geometry_msgs/WrenchStamped wrench
 cartesian_control_msgs/CartesianTolerance path_tolerance
 cartesian_control_msgs/CartesianTolerance goal_tolerance
 duration goal_time_tolerance
+bool override_default_tolerances
 
 ---
 
