@@ -1,0 +1,16 @@
+<launch>
+    <!-- Load the controller parameters onto the parameter server -->
+    <rosparam file="$(find compliant_trajectory_control)/config/compliant_trajectory.yaml" />
+
+    <!-- mapping to a shared topic name -->
+    <remap from="compliant_traj_action_server/target_wrench" to="target_wrench" />
+
+    <!-- make sure the name of this node matches that in the yaml file -->
+    <node 
+        name="compliant_traj_action_server" 
+        pkg="compliant_trajectory_control" 
+        type="follow_compliant_trajectory_action_server" 
+        output="screen"
+    />
+
+</launch>

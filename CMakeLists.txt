@@ -1,62 +1,50 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(joint_to_cartesian_trajectory)
+project(compliant_trajectory_control)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++14)
-
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  kdl_parser
-  tf2_eigen
-  trajectory_msgs
-  cartesian_control_msgs
-  message_generation
+find_package(catkin REQUIRED COMPONENTS 
+    rospy
+    message_generation
+    std_msgs
+    geometry_msgs
+    trajectory_msgs
+    cartesian_control_msgs
+    dynamic_reconfigure
 )
 
-# Generate services in the 'srv' folder
-add_service_files(
+catkin_python_setup()
+
+## Generate dynamic reconfigure parameters in the 'cfg' folder
+generate_dynamic_reconfigure_options(
+  cfg/Tolerance6DOF.cfg
+  cfg/GoalTimeTolerance.cfg
+)
+
+add_action_files(
   FILES
-  JointToCartesianTrajectory.srv
+  FollowCompliantTrajectory.action
 )
 
 # Generate added messages and services with any dependencies listed here
 generate_messages(
   DEPENDENCIES
+  std_msgs
+  geometry_msgs
   trajectory_msgs
   cartesian_control_msgs
+  dynamic_reconfigure
 )
 
 catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS
-  roscpp
-  kdl_parser
-  tf2_eigen
-  trajectory_msgs
-  control_msgs
-  cartesian_control_msgs
-#  DEPENDS system_lib
+    CATKIN_DEPENDS
+    rospy
+    std_msgs
+    geometry_msgs
+    trajectory_msgs
+    cartesian_control_msgs
 )
 
-###########
-## Build ##
-###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-include_directories(
-  include
-  ${catkin_INCLUDE_DIRS}
+catkin_install_python(
+    PROGRAMS 
+        scripts/follow_compliant_trajectory_action_server
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
-
-add_executable(joint_to_cartesian_service 
-  src/joint_to_cartesian_service_node.cpp
-  src/joint_to_cartesian_service.cpp
-  src/joint_to_cartesian_converter.cpp  
-)
-add_dependencies(joint_to_cartesian_service ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(joint_to_cartesian_service ${catkin_LIBRARIES} ${GCC_COVERAGE_LINK_FLAGS})

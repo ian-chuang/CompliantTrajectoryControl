@@ -1,0 +1,23 @@
+cartesian_traj_publisher:
+  type: cartesian_trajectory_publisher/CartesianTrajectoryPublisher
+  base: base_link
+  tip: tcp_link
+  joints:
+    - shoulder_pan_joint
+    - shoulder_lift_joint
+    - elbow_joint
+    - wrist_1_joint
+    - wrist_2_joint
+    - wrist_3_joint 
+
+compliant_traj_action_server:
+  controller: cartesian_traj_publisher
+  path_tolerance:
+    pose_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    twist_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    accel_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+  goal_tolerance:
+    pose_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    twist_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    accel_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+  goal_time_tolerance: 3.0
