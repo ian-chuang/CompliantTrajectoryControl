@@ -65,12 +65,12 @@ class JointToCartesianConverter:
             cart_point.pose.orientation.w = quat[3]
 
             # Set Cartesian velocity
-            cart_point.twist.linear.x = twist.vel.x()
-            cart_point.twist.linear.y = twist.vel.y()
-            cart_point.twist.linear.z = twist.vel.z()
-            cart_point.twist.angular.x = twist.rot.x()
-            cart_point.twist.angular.y = twist.rot.y()
-            cart_point.twist.angular.z = twist.rot.z()
+            # cart_point.twist.linear.x = twist.vel.x()
+            # cart_point.twist.linear.y = twist.vel.y()
+            # cart_point.twist.linear.z = twist.vel.z()
+            # cart_point.twist.angular.x = twist.rot.x()
+            # cart_point.twist.angular.y = twist.rot.y()
+            # cart_point.twist.angular.z = twist.rot.z()
 
             # Add the CartesianTrajectoryPoint to the message
             cartesian_trajectory.points.append(cart_point)
