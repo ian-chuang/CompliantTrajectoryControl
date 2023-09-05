@@ -1,14 +1,23 @@
-cartesian_traj_publisher:
-  type: cartesian_trajectory_publisher/CartesianTrajectoryPublisher
-  base: base_link
-  tip: tcp_link
-  joints:
+cartesian_compliance_controller:
+  type: "velocity_controllers/CartesianComplianceController"
+  end_effector_link: "tcp_link"
+  robot_base_link: "base_link"
+  ft_sensor_ref_link: "wrist_3_link"
+  compliance_ref_link: "tcp_link"
+  target_frame_topic: "target_frame"
+  joints: &robot_joints
     - shoulder_pan_joint
     - shoulder_lift_joint
     - elbow_joint
     - wrist_1_joint
     - wrist_2_joint
     - wrist_3_joint 
+
+cartesian_traj_publisher:
+  type: cartesian_trajectory_publisher/CartesianTrajectoryPublisher
+  base: base_link
+  tip: tcp_link
+  joints: *robot_joints
 
 compliant_traj_action_server:
   controller: cartesian_traj_publisher
