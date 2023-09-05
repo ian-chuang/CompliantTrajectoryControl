@@ -1,5 +1,5 @@
 import rospy
-from homestri_planning_interface.follow_compliant_trajectory_action_server import FollowCompliantTrajectoryActionServer
+from compliant_trajectory_control.follow_compliant_trajectory_action_server import FollowCompliantTrajectoryActionServer
 
 def main():
     rospy.init_node('follow_compliant_trajectory_server')
