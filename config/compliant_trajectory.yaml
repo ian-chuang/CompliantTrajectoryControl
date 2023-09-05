@@ -11,22 +11,16 @@ cartesian_compliance_controller:
     - elbow_joint
     - wrist_1_joint
     - wrist_2_joint
-    - wrist_3_joint 
+    - wrist_3_joint
+  # further configure your compliance controller (gains, stiffness, etc)
 
-cartesian_traj_publisher:
-  type: cartesian_trajectory_publisher/CartesianTrajectoryPublisher
-  base: base_link
-  tip: tcp_link
-  joints: *robot_joints
-
+# make sure this name matches the corresponding node in the launch file
 compliant_traj_action_server:
-  controller: cartesian_traj_publisher
+  end_effector_link: "tcp_link"
+  robot_base_link: "base_link"
+  joints: *robot_joints
   path_tolerance:
-    pose_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
-    twist_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
-    accel_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    pose_error: {trans_x: 0.3, trans_y: 0.3, trans_z: 0.3, rot_x: 1.0, rot_y: 1.0, rot_z: 1.0}
   goal_tolerance:
-    pose_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
-    twist_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
-    accel_error: {trans_x: 0.1, trans_y: 0.1, trans_z: 0.1, rot_x: 0.1, rot_y: 0.1, rot_z: 0.1}
+    pose_error: {trans_x: 0.2, trans_y: 0.2, trans_z: 0.2, rot_x: 0.5, rot_y: 0.5, rot_z: 0.5}
   goal_time_tolerance: 3.0
