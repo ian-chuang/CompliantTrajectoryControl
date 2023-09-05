@@ -18,7 +18,8 @@ class JointToCartesianConverter:
         
         self.robot_chain = robot_tree.getChain(self.base_link, self.tip_link)
         # Add the segments to the chain (use your own code to define the robot's kinematic chain)
-        self.fk_solver = kdl.ChainFkSolverVel_recursive(self.robot_chain)
+        self.fk_vel_solver = kdl.ChainFkSolverVel_recursive(self.robot_chain)
+        self.fk_pos_solver = kdl.ChainFkSolverPos_recursive(self.robot_chain)
 
     def jointToCartesian(self, joint_trajectory):
         cartesian_trajectory = CartesianTrajectory()
@@ -43,12 +44,14 @@ class JointToCartesianConverter:
                 joint_positions[j] = joint_trajectory.points[i].positions[k]
                 joint_velocities[j] = joint_trajectory.points[i].velocities[k]
 
-            # Calculate Cartesian position and velocity
+            frame = kdl.Frame()
+            self.fk_pos_solver.JntToCart(joint_positions, frame)
+
+            # Calculate velocity
             jnt_array_vel = kdl.JntArrayVel(joint_positions, joint_velocities)
             frame_vel = kdl.FrameVel()
-            self.fk_solver.JntToCart(jnt_array_vel, frame_vel)
-            frame = frame_vel.GetFrame()
-            twist = frame_vel.GetTwist()
+            self.fk_vel_solver.JntToCart(jnt_array_vel, frame_vel)
+            twist = frame_vel.deriv()
 
             # Create a CartesianTrajectoryPoint
             cart_point = CartesianTrajectoryPoint()
@@ -71,6 +74,8 @@ class JointToCartesianConverter:
             # cart_point.twist.angular.x = twist.rot.x()
             # cart_point.twist.angular.y = twist.rot.y()
             # cart_point.twist.angular.z = twist.rot.z()
+            cart_point.twist.linear.x = float('NaN')
+            cart_point.acceleration.linear.x = float('NaN')
 
             # Add the CartesianTrajectoryPoint to the message
             cartesian_trajectory.points.append(cart_point)
