@@ -57,7 +57,7 @@
   <depend>actionlib_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>cartesian_control_msgs</depend>
-  <depend>kdl_parser</depend>
+  <depend>kdl_parser_py</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
