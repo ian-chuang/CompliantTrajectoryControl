@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
     trajectory_msgs
     cartesian_control_msgs
     dynamic_reconfigure
+    actionlib_msgs
 )
 
 catkin_python_setup()
@@ -32,6 +33,7 @@ generate_messages(
   trajectory_msgs
   cartesian_control_msgs
   dynamic_reconfigure
+  actionlib_msgs
 )
 
 catkin_package(
@@ -41,6 +43,7 @@ catkin_package(
     geometry_msgs
     trajectory_msgs
     cartesian_control_msgs
+    actionlib_msgs
 )
 
 catkin_install_python(
